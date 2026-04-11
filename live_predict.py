@@ -100,10 +100,12 @@ try:
                 features = np.array([[rms, mav, zc, wl]])
                 features_scaled = scaler.transform(features)
                 
+                # Predict
                 prediction = clf.predict(features_scaled)[0]
                 probabilities = clf.predict_proba(features_scaled)[0]
                 max_prob = np.max(probabilities)
                 
+                # Control Logic Mapping
                 if max_prob < 0.75:
                     command = "STOP (Low Confidence)"
                 elif prediction == 'rest':
@@ -114,9 +116,17 @@ try:
                     command = "REVERSE"
                 else:
                     command = "UNKNOWN"
-                    
-                print(f"Command: {command:<25} | Confidence: {max_prob:.2f} | RMS: {rms:.2f}")
-
+                
+                # --- DESCRIPTIVE OUTPUT ---
+                # Round probabilities for clean printing
+                probs_rounded = np.round(probabilities, 2)
+                # Grab the class names the model was trained on (usually ['extend', 'flex', 'rest'])
+                classes = clf.classes_ 
+                
+                print(f"\n[{command}]")
+                print(f"  Model Output : Predicted '{prediction}' with {max_prob*100:.0f}% confidence.")
+                print(f"  All Probs    : {dict(zip(classes, probs_rounded))}")
+                print(f"  Raw Features : RMS={rms:.2f} | MAV={mav:.2f} | ZC={zc} | WL={wl:.2f}")
         time.sleep(0.01)
         
 except KeyboardInterrupt:
