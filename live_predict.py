@@ -4,7 +4,7 @@ import os
 import joblib
 from collections import deque
 from pylsl import StreamInlet, resolve_byprop
-from scipy.signal import butter, iirnotch, lfilter
+from scipy.signal import butter, iirnotch, lfilter, welch  # ADDED: welch for MNF
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -20,14 +20,6 @@ try:
 except FileNotFoundError:
     print(f"Error: Files not found. Python is looking exactly here:\n{model_path}\n{scaler_path}")
     exit()
-# 1. Load Pre-trained Model and Scaler
-#try:
-#    clf = joblib.load('emg_svm_model.pkl')
-#    scaler = joblib.load('emg_scaler.pkl')
-#    print("Model and Scaler loaded.")
-#except FileNotFoundError:
-#    print("Error: Model files not found. Run train_model.py first.")
-#    exit()
 
 # 2. Setup Signal Processing Parameters
 fs = 200.0
@@ -36,9 +28,9 @@ b_band, a_band = butter(4, [20.0/nyq, 99.0/nyq], btype='band')
 w0 = 60.0 / nyq
 b_notch, a_notch = iirnotch(w0, 30)
 
-# Window configuration
-window_size = 50 # 250ms at 200Hz
-# We use a slightly larger buffer for filtering to avoid edge artifacts on small windows
+# Window configuration 
+# (Note: If your training script used 100 for the 6 features, change this to 100)
+window_size = 50 
 filter_buffer_size = 200 
 emg_buffer = deque(maxlen=filter_buffer_size)
 
@@ -68,7 +60,7 @@ while True:
             filtered = lfilter(b_band, a_band, raw_signal)
             filtered = lfilter(b_notch, a_notch, filtered)
             
-            # Extract only the most recent window_size (50 samples) for feature calculation
+            # Extract only the most recent window_size
             win = filtered[-window_size:]
             
             # Calculate time-domain features
@@ -77,7 +69,18 @@ while True:
             zc = np.sum(np.diff(np.sign(win)) != 0)
             wl = np.sum(np.abs(np.diff(win)))
             
-            features = np.array([[rms, mav, zc, wl]])
+            # NEW: Slope Sign Change (SSC)
+            ssc = np.sum(np.diff(np.sign(np.diff(win))) != 0)
+            
+            # NEW: Mean Frequency (MNF)
+            freqs, psd = welch(win, fs=fs, nperseg=len(win))
+            psd_sum = np.sum(psd)
+            if psd_sum == 0:
+                psd_sum = 1e-10 # Prevent division by zero
+            mnf = np.sum(freqs * psd) / psd_sum
+            
+            # UPDATED: Array now has all 6 features
+            features = np.array([[rms, mav, zc, wl, mnf, ssc]])
             
             # Scale features using the saved scaler
             features_scaled = scaler.transform(features)
