@@ -85,7 +85,8 @@ try:
                 emg_buffer.append(sample[0]) 
 
             if len(emg_buffer) == filter_buffer_size:
-                raw_signal = np.array(emg_buffer)
+                SCALE_FACTOR = 1000000.0 
+                raw_signal = np.array(emg_buffer) * SCALE_FACTOR
                 
                 filtered = lfilter(b_band, a_band, raw_signal)
                 filtered = lfilter(b_notch, a_notch, filtered)
