@@ -17,8 +17,8 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 # ──────────────────────────────────────────────────────────────
 # 1. Load model
 # ──────────────────────────────────────────────────────────────
-model_path  = os.path.join(script_dir, 'emg_svm_model.pkl')
-scaler_path = os.path.join(script_dir, 'emg_scaler.pkl')
+model_path  = os.path.join(script_dir, 'emg_svm_model_2.pkl')
+scaler_path = os.path.join(script_dir, 'emg_scaler_2.pkl')
 
 try:
     clf    = joblib.load(model_path)
