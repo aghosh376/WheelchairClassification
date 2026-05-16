@@ -1,32 +1,31 @@
 """
-run_live_mock_test.py — laptop-only test, zero hardware required.
+run_live_mock_test.py — test with real EMG, no ESP32 needed.
 
-Confirms the full signal → bridge pipeline works before connecting any hardware.
+The bridge runs in mock mode: predictions from your real EMG arm movements
+are printed to the screen exactly as they would be sent to the ESP32 —
+but nothing is actually transmitted, so no Arduino is required.
 
-Does NOT require:
-  - An ESP32 / serial port
-  - An EMG sensor or LSL stream
-  - pylsl installed
+Two modes (set USE_REAL_EMG below):
 
-What it tests:
-  1. The label-to-command mapping in serial_bridge.py is correct.
-  2. The mock serial output is formatted the way the ESP32 expects.
-  3. The prediction loop structure mirrors run_live_to_serial.py exactly.
+  USE_REAL_EMG = True   ← use this when your EMG sensor + LSL stream are running.
+                          Real arm movements → real predictions → printed mock commands.
 
-Once this passes cleanly, connect the ESP32 and run run_live_to_serial.py.
+  USE_REAL_EMG = False  ← use this if you have NO hardware at all (pure software check).
+                          Fake predictions cycle automatically, no sensor needed.
 """
 
 import time
 import random
 from serial_bridge import ESP32SerialBridge
 
-# ---------------------------------------------------------------------------
-# Simulated prediction stream
-# Produces the same output format as live_predict_wrapper.live_prediction_stream()
-# but generates fake data — no hardware needed at all.
-# ---------------------------------------------------------------------------
+# ── Set this to True if your EMG sensor and LSL stream are running ──────────
+USE_REAL_EMG = True
+# ────────────────────────────────────────────────────────────────────────────
 
-# These are the exact command strings live_predict.py can output.
+
+# ---------------------------------------------------------------------------
+# Simulated stream — used only when USE_REAL_EMG = False
+# ---------------------------------------------------------------------------
 _SIMULATED_SEQUENCE = [
     "FORWARD",
     "STOP",
@@ -39,17 +38,8 @@ _SIMULATED_SEQUENCE = [
     "REVERSE",
 ]
 
-
-def simulated_prediction_stream(delay=1.0):
-    """
-    Generator that yields fake prediction dicts matching live_predict_wrapper format.
-
-    Parameters
-    ----------
-    delay : float
-        Seconds between predictions (default 1 s, easy to read in the terminal).
-    """
-    for i, command in enumerate(_SIMULATED_SEQUENCE * 3):  # repeat 3 times then stop
+def _simulated_prediction_stream(delay=1.0):
+    for command in _SIMULATED_SEQUENCE * 3:
         yield {
             "command":    command,
             "raw_label":  command.lower().replace(" ", "_"),
@@ -61,37 +51,66 @@ def simulated_prediction_stream(delay=1.0):
 
 # ---------------------------------------------------------------------------
 def main():
-    print("=" * 60)
-    print("  LAPTOP-ONLY MOCK TEST — no ESP32 or EMG hardware needed")
-    print("=" * 60)
-    print()
-    print("Using SIMULATED predictions.")
-    print("Press Ctrl+C to stop early.")
-    print("-" * 60)
-
     bridge = ESP32SerialBridge(mock=True)
+
+    if USE_REAL_EMG:
+        print("=" * 60)
+        print("  LIVE EMG TEST — no ESP32 needed")
+        print("=" * 60)
+        print()
+        print("Your real arm movements will be classified and the")
+        print("commands that WOULD go to the ESP32 are printed here.")
+        print()
+        print("Press Ctrl+C to stop.")
+        print("-" * 60)
+
+        # Import here so the script still runs (simulated mode) if pylsl is missing
+        try:
+            from live_predict_wrapper import load_model, connect_lsl_inlet, live_prediction_stream
+        except ImportError as e:
+            print(f"ERROR: Could not import live_predict_wrapper: {e}")
+            print("Make sure pylsl and all model dependencies are installed.")
+            return
+
+        clf, scaler = load_model()
+        inlet       = connect_lsl_inlet()
+        stream      = live_prediction_stream(inlet, clf, scaler)
+
+    else:
+        print("=" * 60)
+        print("  SIMULATED TEST — no hardware needed at all")
+        print("=" * 60)
+        print()
+        print("Using fake predictions (not real EMG).")
+        print("Set USE_REAL_EMG = True at the top of this file to use your sensor.")
+        print()
+        print("Press Ctrl+C to stop early.")
+        print("-" * 60)
+
+        stream = _simulated_prediction_stream(delay=1.0)
+
     bridge.connect()
     print()
 
     try:
-        for result in simulated_prediction_stream(delay=1.0):
+        for result in stream:
             raw_prediction = result["command"]
             confidence     = result["confidence"]
+            rms            = result["rms"]
 
             serial_command = bridge.send_command(raw_prediction)
 
-            print(f"Raw prediction : {raw_prediction:<28} (confidence={confidence:.2f})")
-            print(f"Mapped command : {serial_command}")
+            print(f"  Arm signal     : {raw_prediction:<28} (confidence={confidence:.2f}, RMS={rms:.4f})")
+            print(f"  → ESP32 would receive: '{serial_command}'")
             print()
 
     except KeyboardInterrupt:
-        print("\n[Test] Stopped by user.")
+        print("\n[Test] Stopped.")
     finally:
         bridge.close()
         print("[Test] Done.")
         print()
-        print("If all mappings look correct, you are ready to connect the ESP32")
-        print("and run:  python3 run_live_to_serial.py")
+        print("When the ESP32 is connected, run:  python3 run_live_to_serial.py")
 
 
 if __name__ == "__main__":
