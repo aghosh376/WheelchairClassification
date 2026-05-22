@@ -1,5 +1,5 @@
 """
-EMG Classifier v3 — Two-Stage Cascade + Fixed Dead Zone
+Finalized EMG Classifier v3 — Two-Stage Cascade + Fixed Dead Zone
 Access to the Google Colab where we actually tested and worked with: https://colab.research.google.com/drive/1DWJDazDnbTeksjYIdPAARn3yMhUdqzcO?usp=sharing
 ========================================================
 
